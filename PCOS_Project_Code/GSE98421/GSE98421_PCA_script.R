@@ -64,6 +64,42 @@ fviz_eig(pca_res, addlabels = TRUE,
   ggtitle("Variance Explained by Principal Components")
 
 # ================================================================
+# Batch Effect Assessment
+# ================================================================
+# If batch information is available in phenotype_data_a (e.g., 'batch' column), visualize PCA by batch
+if ("batch" %in% colnames(phenotype_data_a)) {
+  batch <- phenotype_data_a$batch
+  names(batch) <- colnames(data)
+  
+  pca_df$Batch <- batch
+  
+  ggplot(pca_df, aes(PC1, PC2, color = Batch)) +
+    geom_point(size = 4) +
+    theme_minimal() +
+    labs(title = "PCA Colored by Batch") +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.text = element_text(size = 12),
+      axis.title = element_text(size = 13),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 11)
+    )
+}
+
+# ================================================================
+# Batch Correction (if needed)
+# ================================================================
+# Apply ComBat if batch effects are detected
+if (exists("batch")) {
+  library(sva)
+  mod <- model.matrix(~ groups)
+  corrected_data <- ComBat(dat = as.matrix(data), batch = batch, mod = mod)
+  
+  # Use corrected data for downstream analysis
+  data <- corrected_data
+}
+
+# ================================================================
 # Outlier Detection
 # ================================================================
 # Samples far from the cluster center are potential outliers
@@ -110,3 +146,20 @@ hc <- hclust(dist_matrix, method = "complete")
 plot(hc, labels = groups,
      main = "Hierarchical Clustering of Samples",
      sub = "", xlab = "")
+
+
+# QC Summary for Report
+
+qc_summary <- list(
+  total_samples = ncol(data),
+  group_distribution = table(groups),
+  pca_variance_PC1 = round(summary(pca_res)$importance[2, 1] * 100, 2),
+  pca_variance_PC2 = round(summary(pca_res)$importance[2, 2] * 100, 2),
+  potential_outliers = outliers,
+  top_variable_genes = top_genes,
+  batch_effect_checked = exists("batch"),
+  batch_correction_applied = exists("corrected_data")
+)
+
+print("QC Summary:")
+print(qc_summary)
