@@ -134,7 +134,65 @@ p4 <- fviz_eig(pca_res, addlabels = TRUE,
 ggsave(paste0(output_path, "ScreePlot.png"), plot = p4,
        width = 8, height = 6, dpi = 300)
 
-# ----- 12. Hierarchical Clustering -----
+# ----- 12. Outlier Detection -----
+distances <- sqrt(pca_res$x[, 1]^2 + pca_res$x[, 2]^2)
+outliers <- names(distances[distances > mean(distances) + 2 * sd(distances)])
+cat("Potential outliers based on PCA distance:", paste(outliers, collapse = ", "), "\n")
+writeLines(outliers, paste0(output_path, "Potential_Outliers.txt"))
+
+# ----- 13. Heatmap of Top Variable Genes -----
+top_genes <- names(sort(apply(vst_mat, 1, var), decreasing = TRUE))[1:30]
+heatmap_data <- vst_mat[top_genes, ]
+annotation_col <- data.frame(Condition = meta$Condition)
+rownames(annotation_col) <- colnames(heatmap_data)
+
+pheatmap(heatmap_data,
+         scale = "row",
+         annotation_col = annotation_col,
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         main = "Top 30 Most Variable Genes",
+         filename = paste0(output_path, "TopVariableGenes_Heatmap.png"),
+         fontsize_row = 6,
+         fontsize_col = 8,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE)
+
+# ----- 14. Batch Effect Assessment -----
+if ("batch" %in% colnames(meta)) {
+  pca_df$Batch <- meta$batch
+  p_batch <- ggplot(pca_df, aes(PC1, PC2, color = Batch)) +
+    geom_point(size = 4) +
+    theme_classic(base_size = 14) +
+    labs(title = "PCA Colored by Batch")
+  ggsave(paste0(output_path, "PCA_by_Batch.png"), plot = p_batch,
+         width = 8, height = 7, dpi = 300)
+}
+
+# ----- 15. Batch Correction (Optional) -----
+# Uncomment if batch effects are confirmed
+# library(sva)
+# mod <- model.matrix(~ Condition, data = meta)
+# batch <- meta$batch
+# vst_corrected <- ComBat(dat = vst_mat, batch = batch, mod = mod)
+# vst_mat <- vst_corrected
+
+# ----- 16. QC Summary -----
+qc_summary <- list(
+  dataset = "GSE277906",
+  total_samples = ncol(vst_mat),
+  group_distribution = table(meta$Condition),
+  pca_variance_PC1 = percentVar[1],
+  pca_variance_PC2 = percentVar[2],
+  outliers = outliers,
+  top_variable_genes = top_genes,
+  batch_effect_checked = "batch" %in% colnames(meta)
+)
+
+saveRDS(qc_summary, file = paste0(output_path, "QC_Summary.rds"))
+writeLines(capture.output(print(qc_summary)), paste0(output_path, "QC_Summary.txt"))
+
+
+# ----- 17. Hierarchical Clustering -----
 png(paste0(output_path, "Hierarchical_Clustering.png"), width = 3000, height = 2000, res = 300)
 plot(hclust(dist(t(vst_mat)), method = "complete"),
      labels = meta$Condition,
